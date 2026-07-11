@@ -1,0 +1,8 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+opencv-python==4.10.0.84
+numpy==1.26.4; python_version < "3.13"
+numpy==2.2.6; python_version >= "3.13"
+scikit-learn==1.6.0
+joblib==1.4.2

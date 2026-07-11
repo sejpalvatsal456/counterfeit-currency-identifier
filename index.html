@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Fake Indian Note Detection Prototype</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="capture-pane">
+        <div class="topbar">
+          <div>
+            <p class="eyebrow">Prototype</p>
+            <h1>Indian Note Check</h1>
+          </div>
+          <span id="statusPill" class="status-pill">No photo</span>
+        </div>
+
+        <label class="field-label" for="denomination">Denomination</label>
+        <select id="denomination" class="input-control">
+          <option value="10">INR 10</option>
+          <option value="20">INR 20</option>
+          <option value="50">INR 50</option>
+          <option value="100">INR 100</option>
+          <option value="200">INR 200</option>
+          <option value="500" selected>INR 500</option>
+          <option value="2000">INR 2000</option>
+        </select>
+
+        <label class="camera-card" for="notePhoto">
+          <input id="notePhoto" type="file" accept="image/*" capture="environment" />
+          <span class="camera-icon" aria-hidden="true">CAM</span>
+          <span class="camera-title">Take or upload note photo</span>
+          <span class="camera-subtitle">Place the note on a plain surface and keep all corners visible.</span>
+        </label>
+
+        <div class="preview-frame">
+          <img id="previewImage" alt="Captured currency note preview" />
+          <div id="emptyPreview" class="empty-preview">Photo preview appears here</div>
+        </div>
+      </section>
+
+      <section class="analysis-pane">
+        <div class="verdict-card">
+          <p class="eyebrow">Result</p>
+          <div class="verdict-row">
+            <h2 id="verdictText">Waiting for photo</h2>
+            <strong id="scoreText">0%</strong>
+          </div>
+          <div class="meter" aria-hidden="true"><span id="meterFill"></span></div>
+          <p id="verdictNote" class="verdict-note">
+            Add a clear photo, then mark visible security features below.
+          </p>
+        </div>
+
+        <div class="panel model-panel">
+          <div class="panel-heading">
+            <h2>Trained Model Output</h2>
+            <span id="modelState" class="model-state">Not checked</span>
+          </div>
+          <div class="probability-grid">
+            <div>
+              <span>Real</span>
+              <strong id="realProbability">--</strong>
+            </div>
+            <div>
+              <span>Fake</span>
+              <strong id="fakeProbability">--</strong>
+            </div>
+          </div>
+          <p id="modelNote">
+            Start the Python API and train a model to classify uploaded note photos.
+          </p>
+        </div>
+
+        <div class="panel">
+          <h2>Automatic Photo Checks</h2>
+          <div id="autoChecks" class="check-list"></div>
+        </div>
+
+        <div class="panel">
+          <h2>Security Features Seen</h2>
+          <div id="featureChecks" class="feature-grid"></div>
+        </div>
+
+        <div class="panel caution">
+          <h2>Important</h2>
+          <p>
+            This is a prototype helper, not a legal or forensic detector. Real detection needs
+            a trained image model and validation with genuine and counterfeit note datasets.
+          </p>
+        </div>
+      </section>
+    </main>
+
+    <canvas id="analysisCanvas" hidden></canvas>
+    <script src="app.js?v=2"></script>
+  </body>
+</html>
