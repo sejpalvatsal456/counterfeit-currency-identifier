@@ -24,6 +24,8 @@ const modelState = document.querySelector('#modelState');
 const realProbability = document.querySelector('#realProbability');
 const fakeProbability = document.querySelector('#fakeProbability');
 const modelNote = document.querySelector('#modelNote');
+const serialNumberStatus = document.querySelector('#serialNumberStatus');
+const serialNumber = document.querySelector('#serialNumber');
 
 let latestMetrics = null;
 let latestFile = null;
@@ -83,9 +85,11 @@ async function predictWithModel() {
   if (!latestFile) return;
 
   modelState.textContent = 'Checking';
+  serialNumberStatus.textContent = 'Checking';
   modelNote.textContent = 'Sending the photo to the trained Python model...';
   realProbability.textContent = '--';
   fakeProbability.textContent = '--';
+  serialNumber.textContent = '--';
 
   const formData = new FormData();
   formData.append('file', latestFile);
@@ -99,6 +103,9 @@ async function predictWithModel() {
     });
     const payload = await response.json();
 
+    // console.log("Payload from /predict");
+    // console.log(payload);
+
     if (!response.ok) {
       throw new Error(payload.detail || 'Model request failed.');
     }
@@ -108,6 +115,8 @@ async function predictWithModel() {
     fakeProbability.textContent = `${Math.round(payload.fake_probability * 100)}%`;
     modelState.textContent = payload.prediction === 'real' ? 'Real' : 'Fake';
     modelNote.textContent = `Model confidence: ${confidence}%. This result depends on the training dataset quality.`;
+    serialNumber.textContent = payload.serial_number;
+    serialNumberStatus.textContent = "Detected";
 
     verdictText.textContent = payload.prediction === 'real' ? 'Model says real' : 'Model says fake';
     scoreText.textContent = `${confidence}%`;

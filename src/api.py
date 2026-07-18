@@ -8,6 +8,7 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from src.ocr import extract_serial_number
 
 from src.features import extract_features, load_image_from_bytes
 
@@ -69,6 +70,7 @@ async def predict(
     payload = await file.read()
     try:
         image = load_image_from_bytes(payload)
+        serial_number = extract_serial_number(image)
         feature_result = extract_features(image, denomination)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -97,6 +99,7 @@ async def predict(
         "confidence": round(confidence, 4),
         "real_probability": round(real_probability, 4),
         "fake_probability": round(fake_probability, 4),
+        "serial_number": serial_number,
         "denomination": denomination,
         "diagnostics": feature_result.diagnostics,
     }
