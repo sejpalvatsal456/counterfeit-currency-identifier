@@ -138,7 +138,7 @@ h2 {
   grid-template-columns: 54px 1fr;
   gap: 6px 14px;
   align-items: center;
-  min-height: 116px;
+  min-height: 150px;
   border: 2px dashed rgba(31, 122, 103, 0.45);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.72);
@@ -176,6 +176,19 @@ h2 {
   line-height: 1.35;
 }
 
+.capture-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.capture-side {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
 .preview-frame {
   position: relative;
   min-height: 430px;
@@ -185,6 +198,10 @@ h2 {
   overflow: hidden;
   background: #e9e4d8;
   box-shadow: var(--shadow);
+}
+
+.capture-row .preview-frame {
+  min-height: 210px;
 }
 
 .preview-frame img {
@@ -358,6 +375,14 @@ h2 {
 
   .preview-frame {
     min-height: 270px;
+  }
+
+  .capture-row {
+    grid-template-columns: 1fr;
+  }
+
+  .capture-row .preview-frame {
+    min-height: 260px;
   }
 }
 

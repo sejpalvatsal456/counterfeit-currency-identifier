@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from src.ocr import extract_serial_number
 
-from src.features import extract_features, load_image_from_bytes
+from src.features import extract_dual_features, load_image_from_bytes
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -52,26 +52,35 @@ def health() -> dict[str, object]:
 @app.get("/predict")
 def predict_help() -> dict[str, str]:
     return {
-        "message": "Use POST /predict with multipart form-data fields: file and denomination.",
+        "message": (
+            "Use POST /predict with multipart form-data fields: "
+            "front_file, back_file and denomination."
+        ),
     }
 
 
 @app.post("/predict")
 async def predict(
-    file: UploadFile = File(...),
+    front_file: UploadFile = File(...),
+    back_file: UploadFile = File(...),
     denomination: str = Form("500"),
 ) -> dict[str, object]:
     if not MODEL_PATH.exists():
         raise HTTPException(
             status_code=503,
-            detail="Model not trained. Add images to dataset/real and dataset/fake, then run python -m src.train_model.",
+            detail=(
+                "Model not trained. Add paired front/back images to "
+                "dataset/real and dataset/fake, then run python -m src.train_model."
+            ),
         )
 
-    payload = await file.read()
+    front_payload = await front_file.read()
+    back_payload = await back_file.read()
     try:
-        image = load_image_from_bytes(payload)
-        serial_number = extract_serial_number(image)
-        feature_result = extract_features(image, denomination)
+        front_image = load_image_from_bytes(front_payload)
+        back_image = load_image_from_bytes(back_payload)
+        serial_number = extract_serial_number(front_image)
+        feature_result = extract_dual_features(front_image, back_image, denomination)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

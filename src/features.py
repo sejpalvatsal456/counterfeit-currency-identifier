@@ -36,11 +36,27 @@ FEATURE_NAMES = [
     "v_std",
 ]
 
+# Feature names for the combined front+back vector, in the order produced
+# by extract_dual_features().
+DUAL_FEATURE_NAMES = [f"front_{name}" for name in FEATURE_NAMES] + [
+    f"back_{name}" for name in FEATURE_NAMES
+]
+
 
 @dataclass(frozen=True)
 class FeatureResult:
     vector: np.ndarray
     diagnostics: dict[str, float]
+
+
+@dataclass(frozen=True)
+class DualFeatureResult:
+    """Combined feature result for a note's front and back images."""
+
+    vector: np.ndarray
+    diagnostics: dict[str, float]
+    front: FeatureResult
+    back: FeatureResult
 
 
 def load_image_from_bytes(payload: bytes) -> np.ndarray:
@@ -101,6 +117,33 @@ def extract_features(image: np.ndarray, denomination: str) -> FeatureResult:
 
     diagnostics = {name: float(value) for name, value in zip(FEATURE_NAMES, values)}
     return FeatureResult(vector=values, diagnostics=diagnostics)
+
+
+def extract_dual_features(
+    front_image: np.ndarray, back_image: np.ndarray, denomination: str
+) -> DualFeatureResult:
+    """Extract and combine features from both sides of a note.
+
+    Both images are cropped/normalized and scored independently (aspect
+    ratio, color match, texture/edge signals, etc.), then the two feature
+    vectors are concatenated so the classifier sees the full note, not just
+    the front.
+    """
+    front_result = extract_features(front_image, denomination)
+    back_result = extract_features(back_image, denomination)
+
+    vector = np.concatenate([front_result.vector, back_result.vector])
+
+    diagnostics: dict[str, float] = {}
+    diagnostics.update({f"front_{key}": value for key, value in front_result.diagnostics.items()})
+    diagnostics.update({f"back_{key}": value for key, value in back_result.diagnostics.items()})
+
+    return DualFeatureResult(
+        vector=vector,
+        diagnostics=diagnostics,
+        front=front_result,
+        back=back_result,
+    )
 
 
 def _crop_largest_note_like_region(image: np.ndarray) -> np.ndarray:

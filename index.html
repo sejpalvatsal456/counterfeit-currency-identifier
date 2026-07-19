@@ -28,16 +28,34 @@
           <option value="2000">INR 2000</option>
         </select>
 
-        <label class="camera-card" for="notePhoto">
-          <input id="notePhoto" type="file" accept="image/*" capture="environment" />
-          <span class="camera-icon" aria-hidden="true">CAM</span>
-          <span class="camera-title">Take or upload note photo</span>
-          <span class="camera-subtitle">Place the note on a plain surface and keep all corners visible.</span>
-        </label>
+        <div class="capture-row">
+          <div class="capture-side">
+            <label class="camera-card" for="notePhotoFront">
+              <input id="notePhotoFront" type="file" accept="image/*" capture="environment" />
+              <span class="camera-icon" aria-hidden="true">CAM</span>
+              <span class="camera-title">Front side</span>
+              <span class="camera-subtitle">Place the note on a plain surface and keep all corners visible.</span>
+            </label>
 
-        <div class="preview-frame">
-          <img id="previewImage" alt="Captured currency note preview" />
-          <div id="emptyPreview" class="empty-preview">Photo preview appears here</div>
+            <div class="preview-frame">
+              <img id="previewImageFront" alt="Captured currency note front preview" />
+              <div id="emptyPreviewFront" class="empty-preview">Front preview appears here</div>
+            </div>
+          </div>
+
+          <div class="capture-side">
+            <label class="camera-card" for="notePhotoBack">
+              <input id="notePhotoBack" type="file" accept="image/*" capture="environment" />
+              <span class="camera-icon" aria-hidden="true">CAM</span>
+              <span class="camera-title">Back side</span>
+              <span class="camera-subtitle">Flip the note over and keep all corners visible.</span>
+            </label>
+
+            <div class="preview-frame">
+              <img id="previewImageBack" alt="Captured currency note back preview" />
+              <div id="emptyPreviewBack" class="empty-preview">Back preview appears here</div>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -70,7 +88,7 @@
             </div>
           </div>
           <p id="modelNote">
-            Start the Python API and train a model to classify uploaded note photos.
+            Add front and back photos, then start the Python API and train a model to classify them.
           </p>
         </div>
 
@@ -111,6 +129,6 @@
     </main>
 
     <canvas id="analysisCanvas" hidden></canvas>
-    <script src="app.js?v=2"></script>
+    <script src="app.js?v=3"></script>
   </body>
 </html>

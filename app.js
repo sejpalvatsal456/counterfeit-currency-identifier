@@ -8,10 +8,13 @@ const noteProfiles = {
   2000: { width: 166, height: 66, color: [167, 91, 143], features: ['Watermark', 'Windowed security thread', 'See-through register', 'Latent image', 'Micro lettering', 'Optically variable ink'] },
 };
 
-const photoInput = document.querySelector('#notePhoto');
+const photoInputFront = document.querySelector('#notePhotoFront');
+const photoInputBack = document.querySelector('#notePhotoBack');
 const denominationInput = document.querySelector('#denomination');
-const previewImage = document.querySelector('#previewImage');
-const emptyPreview = document.querySelector('#emptyPreview');
+const previewImageFront = document.querySelector('#previewImageFront');
+const previewImageBack = document.querySelector('#previewImageBack');
+const emptyPreviewFront = document.querySelector('#emptyPreviewFront');
+const emptyPreviewBack = document.querySelector('#emptyPreviewBack');
 const canvas = document.querySelector('#analysisCanvas');
 const autoChecks = document.querySelector('#autoChecks');
 const featureChecks = document.querySelector('#featureChecks');
@@ -28,7 +31,8 @@ const serialNumberStatus = document.querySelector('#serialNumberStatus');
 const serialNumber = document.querySelector('#serialNumber');
 
 let latestMetrics = null;
-let latestFile = null;
+let latestFrontFile = null;
+let latestBackFile = null;
 
 function getApiBaseUrl() {
   if (window.location.port === '5500') {
@@ -40,38 +44,64 @@ function getApiBaseUrl() {
 function init() {
   renderFeatureChecks();
   renderAutoChecks([]);
-  photoInput.addEventListener('change', handlePhoto);
+  photoInputFront.addEventListener('change', (event) => handlePhoto(event, 'front'));
+  photoInputBack.addEventListener('change', (event) => handlePhoto(event, 'back'));
   denominationInput.addEventListener('change', () => {
     renderFeatureChecks();
-    if (previewImage.src) analyzeImage();
+    if (previewImageFront.src) analyzeImage();
     updateVerdict();
   });
 }
 
-function handlePhoto(event) {
+function handlePhoto(event, side) {
   const file = event.target.files?.[0];
   if (!file) return;
-  latestFile = file;
+
+  if (side === 'front') {
+    latestFrontFile = file;
+  } else {
+    latestBackFile = file;
+  }
+
+  const previewImage = side === 'front' ? previewImageFront : previewImageBack;
+  const emptyPreview = side === 'front' ? emptyPreviewFront : emptyPreviewBack;
 
   const reader = new FileReader();
   reader.onload = () => {
     previewImage.src = reader.result;
     previewImage.style.display = 'block';
     emptyPreview.style.display = 'none';
-    statusPill.textContent = 'Photo loaded';
-    previewImage.onload = analyzeImage;
+    updateStatusPill();
+
+    if (side === 'front') {
+      previewImage.onload = analyzeImage;
+    } else if (latestFrontFile) {
+      predictWithModel();
+    }
   };
   reader.readAsDataURL(file);
 }
 
+function updateStatusPill() {
+  if (latestFrontFile && latestBackFile) {
+    statusPill.textContent = 'Front & back loaded';
+  } else if (latestFrontFile) {
+    statusPill.textContent = 'Front loaded — add back photo';
+  } else if (latestBackFile) {
+    statusPill.textContent = 'Back loaded — add front photo';
+  } else {
+    statusPill.textContent = 'No photo';
+  }
+}
+
 function analyzeImage() {
   const maxWidth = 900;
-  const scale = Math.min(1, maxWidth / previewImage.naturalWidth);
-  canvas.width = Math.max(1, Math.round(previewImage.naturalWidth * scale));
-  canvas.height = Math.max(1, Math.round(previewImage.naturalHeight * scale));
+  const scale = Math.min(1, maxWidth / previewImageFront.naturalWidth);
+  canvas.width = Math.max(1, Math.round(previewImageFront.naturalWidth * scale));
+  canvas.height = Math.max(1, Math.round(previewImageFront.naturalHeight * scale));
 
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
-  ctx.drawImage(previewImage, 0, 0, canvas.width, canvas.height);
+  ctx.drawImage(previewImageFront, 0, 0, canvas.width, canvas.height);
   const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
   latestMetrics = getImageMetrics(imageData, canvas.width, canvas.height);
 
@@ -82,17 +112,23 @@ function analyzeImage() {
 }
 
 async function predictWithModel() {
-  if (!latestFile) return;
+  if (!latestFrontFile || !latestBackFile) {
+    modelState.textContent = 'Waiting';
+    serialNumberStatus.textContent = 'Waiting';
+    modelNote.textContent = 'Add both the front and back photos to run the trained model.';
+    return;
+  }
 
   modelState.textContent = 'Checking';
   serialNumberStatus.textContent = 'Checking';
-  modelNote.textContent = 'Sending the photo to the trained Python model...';
+  modelNote.textContent = 'Sending both photos to the trained Python model...';
   realProbability.textContent = '--';
   fakeProbability.textContent = '--';
   serialNumber.textContent = '--';
 
   const formData = new FormData();
-  formData.append('file', latestFile);
+  formData.append('front_file', latestFrontFile);
+  formData.append('back_file', latestBackFile);
   formData.append('denomination', denominationInput.value);
 
   try {
@@ -272,7 +308,9 @@ function updateVerdict() {
     verdictText.textContent = 'Waiting for photo';
     verdictNote.textContent = 'Add a clear photo, then mark visible security features below.';
     meterFill.style.background = 'var(--danger)';
-    statusPill.textContent = 'No photo';
+    if (!latestFrontFile && !latestBackFile) {
+      statusPill.textContent = 'No photo';
+    }
     return;
   }
 
@@ -280,17 +318,14 @@ function updateVerdict() {
     verdictText.textContent = 'Likely genuine';
     verdictNote.textContent = 'The photo checks and selected security features look consistent for a prototype review.';
     meterFill.style.background = 'var(--good)';
-    statusPill.textContent = 'Strong match';
   } else if (score >= 52) {
     verdictText.textContent = 'Needs inspection';
     verdictNote.textContent = 'Some checks are inconclusive. Retake the photo in brighter light and inspect the note physically.';
     meterFill.style.background = 'var(--amber)';
-    statusPill.textContent = 'Review needed';
   } else {
     verdictText.textContent = 'Suspicious';
     verdictNote.textContent = 'The note did not match enough visible checks. Do not rely on this alone for a final decision.';
     meterFill.style.background = 'var(--danger)';
-    statusPill.textContent = 'Low match';
   }
 }
 

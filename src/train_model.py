@@ -12,10 +12,20 @@ from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
-from src.features import FEATURE_NAMES, extract_features
+from src.features import DUAL_FEATURE_NAMES, extract_dual_features
 
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
+
+# Expected dataset layout (front/back pairs matched by filename stem):
+#
+#   dataset/
+#     real/
+#       front/note001.jpg
+#       back/note001.jpg
+#     fake/
+#       front/note001.jpg
+#       back/note001.jpg
 
 
 def main() -> None:
@@ -27,17 +37,17 @@ def main() -> None:
 
     dataset_dir = Path(args.dataset)
     output_path = Path(args.output)
-    samples, labels, paths = load_dataset(dataset_dir, args.denomination)
+    samples, labels, pairs = load_dataset(dataset_dir, args.denomination)
 
     if len(set(labels)) < 2:
         raise SystemExit("Training needs images in both dataset/real and dataset/fake.")
     if len(labels) < 12:
-        raise SystemExit("Add at least 12 labelled images total before training. More is much better.")
+        raise SystemExit("Add at least 12 labelled note pairs total before training. More is much better.")
 
-    x_train, x_test, y_train, y_test, _, test_paths = train_test_split(
+    x_train, x_test, y_train, y_test, _, test_pairs = train_test_split(
         samples,
         labels,
-        paths,
+        pairs,
         test_size=0.25,
         random_state=42,
         stratify=labels,
@@ -65,47 +75,72 @@ def main() -> None:
         {
             "model": model,
             "denomination": args.denomination,
-            "feature_names": FEATURE_NAMES,
+            "feature_names": DUAL_FEATURE_NAMES,
             "labels": ["fake", "real"],
         },
         output_path,
     )
 
     print(f"Saved model: {output_path}")
-    print(f"Training images: {len(y_train)} | Test images: {len(y_test)}")
+    print(f"Training pairs: {len(y_train)} | Test pairs: {len(y_test)}")
     print(classification_report(y_test, predictions, target_names=["fake", "real"]))
     print("Confusion matrix:")
     print(confusion_matrix(y_test, predictions))
     print("Test files:")
-    for path, actual, predicted in zip(test_paths, y_test, predictions):
-        print(f"- {path} | actual={label_name(actual)} predicted={label_name(predicted)}")
+    for (front_path, back_path), actual, predicted in zip(test_pairs, y_test, predictions):
+        print(
+            f"- front={front_path} back={back_path} "
+            f"| actual={label_name(actual)} predicted={label_name(predicted)}"
+        )
 
 
-def load_dataset(dataset_dir: Path, denomination: str) -> tuple[np.ndarray, np.ndarray, list[str]]:
+def load_dataset(
+    dataset_dir: Path, denomination: str
+) -> tuple[np.ndarray, np.ndarray, list[tuple[str, str]]]:
     vectors = []
     labels = []
-    paths = []
+    pairs: list[tuple[str, str]] = []
 
     for folder, label in [("fake", 0), ("real", 1)]:
-        image_dir = dataset_dir / folder
-        if not image_dir.exists():
+        front_dir = dataset_dir / folder / "front"
+        back_dir = dataset_dir / folder / "back"
+        if not front_dir.exists() or not back_dir.exists():
             continue
-        for image_path in sorted(image_dir.rglob("*")):
-            if image_path.suffix.lower() not in IMAGE_EXTENSIONS:
+
+        back_by_stem = {
+            path.stem: path for path in back_dir.rglob("*") if path.suffix.lower() in IMAGE_EXTENSIONS
+        }
+
+        for front_path in sorted(front_dir.rglob("*")):
+            if front_path.suffix.lower() not in IMAGE_EXTENSIONS:
                 continue
-            image = cv2.imread(str(image_path))
-            if image is None:
-                print(f"Skipping unreadable image: {image_path}")
+
+            back_path = back_by_stem.get(front_path.stem)
+            if back_path is None:
+                print(f"Skipping {front_path}: no matching back image (expected {folder}/back/{front_path.stem}.*)")
                 continue
-            result = extract_features(image, denomination)
+
+            front_image = cv2.imread(str(front_path))
+            back_image = cv2.imread(str(back_path))
+            if front_image is None:
+                print(f"Skipping unreadable image: {front_path}")
+                continue
+            if back_image is None:
+                print(f"Skipping unreadable image: {back_path}")
+                continue
+
+            result = extract_dual_features(front_image, back_image, denomination)
             vectors.append(result.vector)
             labels.append(label)
-            paths.append(str(image_path))
+            pairs.append((str(front_path), str(back_path)))
 
     if not vectors:
-        raise SystemExit(f"No images found in {dataset_dir}/real or {dataset_dir}/fake.")
+        raise SystemExit(
+            f"No matched front/back image pairs found in {dataset_dir}/real or {dataset_dir}/fake "
+            "(expected <label>/front/<name>.jpg and <label>/back/<name>.jpg)."
+        )
 
-    return np.vstack(vectors), np.array(labels, dtype=np.int64), paths
+    return np.vstack(vectors), np.array(labels, dtype=np.int64), pairs
 
 
 def label_name(value: int) -> str:
