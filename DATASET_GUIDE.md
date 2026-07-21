@@ -16,14 +16,16 @@ Public datasets with real counterfeit Indian banknote images are difficult to fi
    - Put approved images in `dataset/fake/`.
 
 3. Public currency-recognition datasets.
-   - Useful for pretraining denomination detection.
+   - Useful for understanding note appearance.
    - Usually not enough for fake-vs-real detection because they mostly contain genuine notes.
 
 4. Controlled fake-like negatives.
-   - For demos only, you can use legal specimen/play-money/training-note images if they are clearly not real currency.
+   - For demos only, you can use legal specimen or training-note images if they are clearly not real currency.
    - This helps test the pipeline, but it does not prove the model can detect real counterfeits.
 
 ## Recommended Collection Plan
+
+The current code trains a TensorFlow classifier on images in `dataset/real` and `dataset/fake`.
 
 Start with one denomination, usually INR 500.
 
@@ -41,7 +43,7 @@ Minimum useful target:
 
 - 100 genuine images
 - 100 fake or approved fake-like images
-- 20 percent held out for testing
+- 20 percent held out for validation
 
 Better target:
 
@@ -58,8 +60,10 @@ Better target:
 
 ## Notes
 
+Because the prototype uses a CNN trained on raw note images, dataset quality matters more than ever.
+
 If you cannot get real counterfeit samples, change the project goal first:
 
-- Phase 1: denomination and note-region detection.
+- Phase 1: note-region detection and image quality checks.
 - Phase 2: security-feature visibility scoring.
-- Phase 3: fake-vs-real only after approved labelled counterfeit data is available.
+- Phase 3: fake-vs-real classification after approved labelled counterfeit data is available.

@@ -3,114 +3,292 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-import cv2
-import joblib
-import numpy as np
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import classification_report, confusion_matrix
-from sklearn.model_selection import train_test_split
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import StandardScaler
+import tensorflow as tf
+from tensorflow.keras import layers
+from tensorflow.keras.callbacks import (
+    EarlyStopping,
+    ModelCheckpoint,
+)
+from tensorflow.keras.applications import MobileNetV2
 
-from src.features import FEATURE_NAMES, extract_features
-
-
-IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
+from src.features import load_training_image
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Train a fake Indian note detector.")
-    parser.add_argument("--dataset", default="dataset", help="Dataset folder with real/ and fake/ subfolders.")
-    parser.add_argument("--denomination", default="500", help="Denomination profile to train against.")
-    parser.add_argument("--output", default="models/note_model.joblib", help="Where to save the trained model.")
-    args = parser.parse_args()
+IMAGE_EXTENSIONS = {
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".bmp",
+    ".webp",
+}
 
-    dataset_dir = Path(args.dataset)
-    output_path = Path(args.output)
-    samples, labels, paths = load_dataset(dataset_dir, args.denomination)
 
-    if len(set(labels)) < 2:
-        raise SystemExit("Training needs images in both dataset/real and dataset/fake.")
-    if len(labels) < 12:
-        raise SystemExit("Add at least 12 labelled images total before training. More is much better.")
+INPUT_SIZE = 224
+BATCH_SIZE = 16
+EPOCHS = 30
 
-    x_train, x_test, y_train, y_test, _, test_paths = train_test_split(
-        samples,
-        labels,
-        paths,
-        test_size=0.25,
-        random_state=42,
-        stratify=labels,
+
+def load_dataset(dataset_dir: Path):
+
+    images = []
+    labels = []
+
+    for folder, label in [
+        ("fake", 0),
+        ("real", 1),
+    ]:
+
+        image_dir = dataset_dir / folder
+
+        if not image_dir.exists():
+            continue
+
+        for image_path in image_dir.rglob("*"):
+
+            if image_path.suffix.lower() not in IMAGE_EXTENSIONS:
+                continue
+
+            try:
+
+                image = load_training_image(
+                    str(image_path)
+                )
+
+                images.append(image)
+                labels.append(label)
+
+            except Exception as e:
+
+                print(
+                    f"Skipping {image_path}: {e}"
+                )
+
+    if len(images) == 0:
+        raise RuntimeError(
+            "Dataset is empty."
+        )
+
+    return (
+        tf.convert_to_tensor(images),
+        tf.convert_to_tensor(labels),
     )
 
-    model = Pipeline(
-        steps=[
-            ("scale", StandardScaler()),
-            (
-                "classifier",
-                RandomForestClassifier(
-                    n_estimators=350,
-                    class_weight="balanced",
-                    min_samples_leaf=2,
-                    random_state=42,
-                ),
+
+def create_model():
+
+    data_augmentation = tf.keras.Sequential(
+        [
+            layers.RandomFlip(
+                "horizontal"
+            ),
+
+            layers.RandomRotation(
+                0.05
+            ),
+
+            layers.RandomZoom(
+                0.10
+            ),
+
+            layers.RandomContrast(
+                0.20
             ),
         ]
     )
-    model.fit(x_train, y_train)
-    predictions = model.predict(x_test)
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    joblib.dump(
-        {
-            "model": model,
-            "denomination": args.denomination,
-            "feature_names": FEATURE_NAMES,
-            "labels": ["fake", "real"],
-        },
-        output_path,
+    base = MobileNetV2(
+        input_shape=(
+            INPUT_SIZE,
+            INPUT_SIZE,
+            3,
+        ),
+        include_top=False,
+        weights="imagenet",
     )
 
-    print(f"Saved model: {output_path}")
-    print(f"Training images: {len(y_train)} | Test images: {len(y_test)}")
-    print(classification_report(y_test, predictions, target_names=["fake", "real"]))
-    print("Confusion matrix:")
-    print(confusion_matrix(y_test, predictions))
-    print("Test files:")
-    for path, actual, predicted in zip(test_paths, y_test, predictions):
-        print(f"- {path} | actual={label_name(actual)} predicted={label_name(predicted)}")
+    base.trainable = False
+
+    inputs = tf.keras.Input(
+        shape=(
+            INPUT_SIZE,
+            INPUT_SIZE,
+            3,
+        )
+    )
+
+    x = data_augmentation(inputs)
+
+    x = base(
+        x,
+        training=False,
+    )
+
+    x = layers.GlobalAveragePooling2D()(x)
+
+    x = layers.Dropout(
+        0.30
+    )(x)
+
+    x = layers.Dense(
+        128,
+        activation="relu",
+    )(x)
+
+    outputs = layers.Dense(
+        1,
+        activation="sigmoid",
+    )(x)
+
+    model = tf.keras.Model(
+        inputs,
+        outputs,
+    )
+
+    model.compile(
+
+        optimizer=tf.keras.optimizers.Adam(
+            1e-3
+        ),
+
+        loss="binary_crossentropy",
+
+        metrics=[
+            "accuracy",
+            tf.keras.metrics.Precision(),
+            tf.keras.metrics.Recall(),
+        ],
+    )
+
+    return model
 
 
-def load_dataset(dataset_dir: Path, denomination: str) -> tuple[np.ndarray, np.ndarray, list[str]]:
-    vectors = []
-    labels = []
-    paths = []
+def main():
 
-    for folder, label in [("fake", 0), ("real", 1)]:
-        image_dir = dataset_dir / folder
-        if not image_dir.exists():
-            continue
-        for image_path in sorted(image_dir.rglob("*")):
-            if image_path.suffix.lower() not in IMAGE_EXTENSIONS:
-                continue
-            image = cv2.imread(str(image_path))
-            if image is None:
-                print(f"Skipping unreadable image: {image_path}")
-                continue
-            result = extract_features(image, denomination)
-            vectors.append(result.vector)
-            labels.append(label)
-            paths.append(str(image_path))
+    parser = argparse.ArgumentParser()
 
-    if not vectors:
-        raise SystemExit(f"No images found in {dataset_dir}/real or {dataset_dir}/fake.")
+    parser.add_argument(
+        "--dataset",
+        default="dataset",
+    )
 
-    return np.vstack(vectors), np.array(labels, dtype=np.int64), paths
+    parser.add_argument(
+        "--output",
+        default="models/note_model.keras",
+    )
 
+    args = parser.parse_args()
 
-def label_name(value: int) -> str:
-    return "real" if value == 1 else "fake"
+    print(
+        "Loading dataset..."
+    )
+
+    images, labels = load_dataset(
+        Path(args.dataset)
+    )
+
+    dataset = tf.data.Dataset.from_tensor_slices(
+        (
+            images,
+            labels,
+        )
+    )
+
+    dataset = dataset.shuffle(
+        len(images)
+    )
+
+    train_size = int(
+        len(images) * 0.8
+    )
+
+    train_dataset = (
+        dataset
+        .take(train_size)
+        .batch(BATCH_SIZE)
+        .prefetch(
+            tf.data.AUTOTUNE
+        )
+    )
+
+    validation_dataset = (
+        dataset
+        .skip(train_size)
+        .batch(BATCH_SIZE)
+        .prefetch(
+            tf.data.AUTOTUNE
+        )
+    )
+
+    model = create_model()
+
+    Path(
+        args.output
+    ).parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    callbacks = [
+
+        EarlyStopping(
+            monitor="val_loss",
+            patience=5,
+            restore_best_weights=True,
+        ),
+
+        ModelCheckpoint(
+
+            filepath=args.output,
+
+            monitor="val_accuracy",
+
+            save_best_only=True,
+        ),
+    ]
+
+    history = model.fit(
+
+        train_dataset,
+
+        validation_data=validation_dataset,
+
+        epochs=EPOCHS,
+
+        callbacks=callbacks,
+    )
+
+    print()
+
+    print(
+        "Training finished."
+    )
+
+    loss, acc, prec, rec = model.evaluate(
+        validation_dataset,
+        verbose=0,
+    )
+
+    print(
+        f"Accuracy : {acc:.4f}"
+    )
+
+    print(
+        f"Precision: {prec:.4f}"
+    )
+
+    print(
+        f"Recall   : {rec:.4f}"
+    )
+
+    model.save(
+        args.output
+    )
+
+    print(
+        f"Saved model to {args.output}"
+    )
 
 
 if __name__ == "__main__":
+
     main()

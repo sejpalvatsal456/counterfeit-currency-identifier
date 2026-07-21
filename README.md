@@ -1,11 +1,11 @@
 # Fake Indian Note Detection
 
-A trainable prototype for detecting whether an Indian currency note photo is real or fake.
+A prototype web app and Python backend for classifying Indian banknote photos as `real` or `fake`.
 
-The project now has two parts:
+The project has two parts:
 
-- A phone-friendly web UI for clicking or uploading a note photo.
-- A Python computer-vision backend that extracts note features, trains a classifier, and returns real/fake probabilities.
+- A browser UI to upload or capture a note photo.
+- A FastAPI backend that crops the note, preprocesses the image, and predicts with a TensorFlow CNN.
 
 ## Project Structure
 
@@ -14,10 +14,10 @@ dataset/
   real/      Put genuine note photos here.
   fake/      Put counterfeit/fake note photos here.
 models/
-  note_model.joblib   Created after training.
+  note_model.keras   Created after training.
 src/
-  features.py         OpenCV feature extraction.
-  train_model.py      Training script.
+  features.py         Image loading and note cropping.
+  train_model.py      TensorFlow training script.
   api.py              FastAPI prediction server.
 index.html            Web UI.
 app.js                Browser camera/upload logic.
@@ -26,17 +26,20 @@ styles.css            UI styles.
 
 ## Install
 
-Use Python 3.10, 3.11, or 3.12 on Windows if possible. These versions have reliable prebuilt wheels for NumPy, OpenCV, and scikit-learn.
+Use Python 3.10, 3.11, or 3.12 on Windows if possible.
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip setuptools wheel
-python -m pip cache purge
-python -m pip install --only-binary=:all: -r requirements.txt
+python -m pip install --no-cache-dir -r requirements.txt
 ```
 
-If `python` points to Python 3.13 or newer and installation still fails, install Python 3.12 from python.org, recreate the virtual environment, and run the commands again.
+If you want OCR-based serial-number extraction, also install:
+
+```powershell
+python -m pip install easyocr
+```
 
 ## Add Training Data
 
@@ -51,21 +54,21 @@ dataset/fake/fake_001.jpg
 dataset/fake/fake_002.jpg
 ```
 
-Use the same denomination for one model. For example, train one model for INR 500 notes first. Use many photos from different phones, distances, angles, and lighting conditions. A useful first target is at least 100 real and 100 fake photos.
+Keeping one denomination per model is still recommended, because different denominations have different color and layout patterns.
 
 ## Train
 
 ```powershell
-python -m src.train_model --denomination 500
+python -m src.train_model --dataset dataset --output models/note_model.keras
 ```
 
 This creates:
 
 ```text
-models/note_model.joblib
+models/note_model.keras
 ```
 
-The script prints a classification report, confusion matrix, and test file predictions.
+The script loads images from `dataset/real` and `dataset/fake`, applies data augmentation, trains a MobileNetV2-based binary classifier, and saves the best model.
 
 ## Run The Detection App
 
@@ -79,28 +82,19 @@ Open this on your computer:
 http://127.0.0.1:8000
 ```
 
-For phone testing, connect phone and computer to the same Wi-Fi and open:
+For phone testing, connect your phone and computer to the same Wi-Fi network and open:
 
 ```text
 http://YOUR_COMPUTER_IP:8000
 ```
 
-## Features Extracted
+## How It Works
 
-The model uses OpenCV to crop the likely note area and extract:
-
-- Note aspect-ratio match for the selected denomination.
-- Brightness, contrast, and sharpness.
-- Edge density.
-- Security-thread score from vertical edge structure.
-- Watermark-region score from tonal variation.
-- See-through-register region score.
-- Micro-text/high-frequency print score.
-- Dominant denomination color distance.
-- HSV color statistics.
-
-These features are passed into a scikit-learn Random Forest classifier.
+- `src/features.py` loads images, detects the note region, corrects perspective, resizes to 224×224, and normalizes pixel values.
+- `src/train_model.py` builds a TensorFlow dataset, freezes a MobileNetV2 feature extractor, adds a classifier head, and trains a binary model.
+- `src/api.py` loads `models/note_model.keras` on startup and exposes `POST /predict` for uploaded note images.
+- `app.js` sends the photo to `/predict` and displays real/fake probabilities plus detected serial number.
 
 ## Important Limits
 
-This is a trainable prototype, not a certified forensic detector. Accuracy depends heavily on your labelled dataset. Real deployment should use expert-labelled images, strict validation, separate denomination models, and testing on phones/cameras that were not used during training.
+This is a prototype helper, not a forensic detector. Accuracy depends heavily on the dataset quality. Real deployment should use expert-labelled counterfeit data, strict validation, and separate testing on cameras not used during training.
